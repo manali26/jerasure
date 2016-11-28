@@ -231,6 +231,21 @@ void jerasure_bitmatrix_dotprod(int k, int w, int *bitmatrix_row,
 
 void jerasure_do_scheduled_operations(char **ptrs, int **schedule, int packetsize);
 
+/*------------------------------------------------------------------*/
+/* These perform delta dot products --------------------------------*/
+/*
+   deltas is a list of data devices which will participate in delta 
+   parity calculation.
+   old_data_ptrs has old data, and new_data_ptrs has new data we would 
+   like to put.
+
+*/
+void jerasure_delta_matrix_dotprod(int k, int w, int *matrix_row, int *deltas,
+                          int *src_ids, int dest_id,
+                          char **old_data_ptrs, char **new_data_ptrs, char **coding_ptrs, int size);
+void jerasure_delta_matrix_encode(int k, int m, int w, int *matrix, int *deltas,
+                          char **data_ptrs, char **new_data_ptrs, char **coding_ptrs, int size);
+
 /* ------------------------------------------------------------ */
 /* Matrix Inversion ------------------------------------------- */
 /*

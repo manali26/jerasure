@@ -641,6 +641,91 @@ void jerasure_matrix_dotprod(int k, int w, int *matrix_row,
   }
 }
 
+void jerasure_delta_matrix_encode(int k, int m, int w, int *matrix, int *deltas,
+                          char **data_ptrs, char **new_data_ptrs, char **coding_ptrs, int size)
+{
+  int i;
+
+  if (w != 8 && w != 16 && w != 32) {
+    fprintf(stderr, "ERROR: jerasure_matrix_encode() and w is not 8, 16 or 32\n");
+    assert(0);
+  }
+
+  for (i = 0; i < m; i++) {
+    jerasure_delta_matrix_dotprod(k, w, matrix+(i*k), deltas, NULL, k+i, data_ptrs, new_data_ptrs, coding_ptrs, size);
+  }
+}
+
+/*
+ * New function to calculate delta dot product.
+ */
+void jerasure_delta_matrix_dotprod(int k, int w, int *matrix_row, int *deltas,
+                          int *src_ids, int dest_id,
+                          char **old_data_ptrs, char **new_data_ptrs, char **coding_ptrs, int size)
+{
+  char *dptr, *sptr, *new_sptr;
+  int i;
+  int *delta_bitmap;
+
+  delta_bitmap = talloc(int, k);
+
+  for (i = 0; i < k; i++) delta_bitmap[i] = 0;
+
+  for (i = 0; deltas[i] != -1; i++) {
+    if (delta_bitmap[deltas[i]] == 0) {
+      delta_bitmap[deltas[i]] = 1;
+      }
+    }
+
+  if (w != 1 && w != 8 && w != 16 && w != 32) {
+    fprintf(stderr, "ERROR: jerasure_delta_matrix_dotprod() called and w is not 1, 8, 16 or 32\n");
+    assert(0);
+  }
+
+  dptr = (dest_id < k) ? new_data_ptrs[dest_id] : coding_ptrs[dest_id-k];
+
+  /* First copy or xor any data that does not need to be multiplied by a factor */
+
+  for (i = 0; i < k; i++) {
+    if (delta_bitmap[i] == 0) continue;
+    if (matrix_row[i] == 1) {
+      if (src_ids == NULL) {
+        sptr = old_data_ptrs[i];
+        new_sptr = new_data_ptrs[i];
+      }
+        galois_region_xor(sptr, dptr, size);
+        galois_region_xor(new_sptr, dptr, size);
+        jerasure_total_xor_bytes += size;
+    }
+  }
+  /* Now do the data that needs to be multiplied by a factor */
+
+  for (i = 0; i < k; i++) {
+    if (delta_bitmap[i] == 0) continue;
+    if (matrix_row[i] != 0 && matrix_row[i] != 1) {
+      if (src_ids == NULL) {
+        sptr = old_data_ptrs[i];
+        new_sptr = new_data_ptrs[i];
+      }
+      switch (w) {
+        case 8:
+             galois_w08_region_multiply(sptr, matrix_row[i], size, dptr, 1);
+             galois_w08_region_multiply(new_sptr, matrix_row[i], size, dptr, 1);
+             break;
+        case 16:
+             galois_w16_region_multiply(sptr, matrix_row[i], size, dptr, 1);
+             galois_w16_region_multiply(new_sptr, matrix_row[i], size, dptr, 1);
+             break;
+        case 32:
+             galois_w32_region_multiply(sptr, matrix_row[i], size, dptr, 1);
+             galois_w32_region_multiply(new_sptr, matrix_row[i], size, dptr, 1);
+             break;
+      }
+      jerasure_total_gf_bytes += size;
+    }
+  }
+
+}
 
 int jerasure_bitmatrix_decode(int k, int m, int w, int *bitmatrix, int row_k_ones, int *erasures,
                             char **data_ptrs, char **coding_ptrs, int size, int packetsize)

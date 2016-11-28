@@ -113,10 +113,11 @@ int main(int argc, char **argv)
   int k, w, i, j, m;
   int *matrix;
   char **data, **coding, **dcopy, **ccopy;
+  char **old_coding;
   unsigned char uc;
   int *erasures, *erased;
   uint32_t seed;
-  
+
   if (argc != 5) usage(NULL);
   if (sscanf(argv[1], "%d", &k) == 0 || k <= 0) usage("Bad k");
   if (sscanf(argv[2], "%d", &m) == 0 || m <= 0) usage("Bad m");
@@ -148,19 +149,65 @@ int main(int argc, char **argv)
 
   coding = talloc(char *, m);
   ccopy = talloc(char *, m);
+  old_coding = talloc(char *, m);
+
   for (i = 0; i < m; i++) {
     coding[i] = talloc(char, sizeof(long));
     ccopy[i] = talloc(char, sizeof(long));
+    old_coding[i] = talloc(char, sizeof(long));
   }
 
   jerasure_matrix_encode(k, m, w, matrix, data, coding, sizeof(long));
 
   for (i = 0; i < m; i++) {
     memcpy(ccopy[i], coding[i], sizeof(long));
-  }
-  
+    memcpy(old_coding[i], coding[i], sizeof(long));
+ }
+
   printf("Encoding Complete:\n\n");
   print_data_and_coding(k, m, w, sizeof(long), data, coding);
+
+ // Get number of data elements to be changed for testing delta parity.
+ // This number should be < k.
+  int num_deltas =  k - 1 ;
+  printf("num_deltas %d:\n\n", num_deltas);
+  int z = 0;
+
+ //now we need to get the data elements changed.
+ int *deltas = talloc(int, (num_deltas + 1));
+ for (i = 0; i < num_deltas; i++) {
+   deltas[i] = i;
+   //zth data element got changed.
+   z = deltas[i];
+   for (j = 0; j < sizeof(long); j++) {
+         uc = MOA_Random_W(8, 1);
+         data[z][j] = (char) uc;
+  }
+ }
+ deltas[i] = -1;
+
+  //encode again using usual way.
+  jerasure_matrix_encode(k, m, w, matrix, data, coding, sizeof(long));
+
+  for (i = 0; i < m; i++) {
+    memcpy(ccopy[i], coding[i], sizeof(long));
+  }
+  printf("Encoding Complete after changing %d data element/s using usual method:\n\n", num_deltas);
+  print_data_and_coding(k, m, w, sizeof(long), data, coding);
+
+  //encode using delta method
+  jerasure_delta_matrix_encode(k, m, w, matrix, deltas, data, dcopy, old_coding, sizeof(long));
+
+  printf("Encoding Complete after changing %d data element/s using delta parity method:\n\n", num_deltas);
+  print_data_and_coding(k, m, w, sizeof(long), data, old_coding);
+
+  for (i = 0; i < m; i++) if (memcmp(coding[i], old_coding[i], sizeof(long)) != 0) {
+      printf("ERROR: C%x after encoding with parity delta method does not match encoding with usual method!<br>\n", i);
+  }
+
+  for (i = 0; i < k; i++) {
+      memcpy(dcopy[i], data[i], sizeof(long));
+  }
 
   erasures = talloc(int, (m+1));
   erased = talloc(int, (k+m));
